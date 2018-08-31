@@ -1408,7 +1408,8 @@ def test_logistic_regression_multi_class_auto(est, solver):
     # check multi_class='auto' => multi_class='ovr' iff binary y or liblinear
 
     def fit(X, y, **kw):
-        return clone(est).set_params(**kw).fit(X, y)
+        est = LogisticRegressionCV(random_state=0, cv=3, max_iter=10000)
+        return est.set_params(**kw).fit(X, y)
 
     X = iris.data[::10]
     X2 = iris.data[1::10]

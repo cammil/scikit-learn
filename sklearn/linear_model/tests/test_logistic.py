@@ -1399,9 +1399,7 @@ def test_logistic_regression_path_coefs_multinomial():
         assert_array_almost_equal(coefs[1], coefs[2], decimal=1)
 
 
-@pytest.mark.parametrize('est', [LogisticRegression(random_state=0,
-                                                    max_iter=10000),
-                                 LogisticRegressionCV(random_state=0, cv=3,
+@pytest.mark.parametrize('est', [LogisticRegressionCV(random_state=0, cv=3,
                                                       max_iter=10000),
                                  ])
 @pytest.mark.parametrize('solver', ['liblinear', 'lbfgs', 'newton-cg', 'sag',

@@ -33,6 +33,7 @@ matrix:
             - python-scipy
             - libatlas3-base
             - libatlas-dev
+<<<<<<< HEAD
     # Python 3.4 build
     - os: osx
       env: DISTRIB="conda" PYTHON_VERSION="3.4" INSTALL_MKL="false"
@@ -48,6 +49,12 @@ matrix:
            JOBLIB_VERSION="*" COVERAGE=true
            CHECK_PYTEST_SOFT_DEPENDENCY="true" TEST_DOCSTRINGS="true"
            SKLEARN_SITE_JOBLIB=1
+=======
+    - os: osx
+      language: generic
+      env: COVERAGE=
+      install: pip install pytest pytest-cov coverage codecov numpy scipy cython .
+>>>>>>> 6315c8cedc11bded44709fb7510db57ca9ba3ba2
       if: type != cron
     # flake8 linting on diff wrt common ancestor with upstream/master
     - env: RUN_FLAKE8="true" SKIP_TESTS="true"
@@ -61,6 +68,7 @@ matrix:
     -  python: 3.6
        env: DISTRIB="scipy-dev"
        if: type = cron OR commit_message =~ /\[scipy-dev\]/
+      
 
 install: source build_tools/travis/install.sh
 script: bash build_tools/travis/test_script.sh

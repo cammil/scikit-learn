@@ -10,6 +10,7 @@ Logistic Regression
 #         Simon Wu <s8wu@uwaterloo.ca>
 #         Arthur Mensch <arthur.mensch@m4x.org
 
+from __future__ import print_function
 import numbers
 import warnings
 
@@ -1842,6 +1843,7 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
 
             if self.refit:
                 best_index = scores.sum(axis=0).argmax()
+                print('scores', scores)
 
                 C_ = self.Cs_[best_index]
                 self.C_.append(C_)
@@ -1865,6 +1867,9 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
                     check_input=False, max_squared_sum=max_squared_sum,
                     sample_weight=sample_weight)
                 w = w[0]
+                print(self.__class__.__name__, self.multi_class, self.solver,
+                      'init', coef_init, 'final', w, '', 'C %s' % C_, sep='\n')
+                print(coefs_paths[:, best_index, :])
 
             else:
                 # Take the best scores across every fold and the average of all

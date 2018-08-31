@@ -11,7 +11,7 @@ from sklearn.datasets import load_iris, make_classification
 from sklearn.metrics import log_loss
 from sklearn.metrics.scorer import get_scorer
 from sklearn.model_selection import StratifiedKFold
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, LabelBinarizer
 from sklearn.utils import compute_class_weight, _IS_32BIT
 from sklearn.utils.testing import assert_almost_equal
 from sklearn.utils.testing import assert_allclose
@@ -34,7 +34,7 @@ from sklearn.linear_model.logistic import (
     logistic_regression_path, LogisticRegressionCV,
     _logistic_loss_and_grad, _logistic_grad_hess,
     _multinomial_grad_hess, _logistic_loss,
-    _log_reg_scoring_path)
+    _log_reg_scoring_path, _multinomial_loss_grad)
 
 X = [[-1, 0], [0, 1], [1, 1]]
 X_sp = sp.csr_matrix(X)
@@ -1399,8 +1399,10 @@ def test_logistic_regression_path_coefs_multinomial():
         assert_array_almost_equal(coefs[1], coefs[2], decimal=1)
 
 
-@pytest.mark.parametrize('est', [LogisticRegression(random_state=0),
-                                 LogisticRegressionCV(random_state=0, cv=3),
+@pytest.mark.parametrize('est', [LogisticRegression(random_state=0,
+                                                    max_iter=10000),
+                                 LogisticRegressionCV(random_state=0, cv=3,
+                                                      max_iter=10000),
                                  ])
 @pytest.mark.parametrize('solver', ['liblinear', 'lbfgs', 'newton-cg', 'sag',
                                     'saga'])
@@ -1429,11 +1431,19 @@ def test_logistic_regression_multi_class_auto(est, solver):
     else:
         est_multi_multi = fit(X, y_multi, multi_class='multinomial',
                               solver=solver)
-        if sys.platform == 'darwin' and solver == 'lbfgs':
-            pytest.xfail('Issue #11924: LogisticRegressionCV(solver="lbfgs", '
-                         'multi_class="multinomial") is nondterministic on '
-                         'MacOS.')  # pragma: no cover
-        assert np.allclose(est_auto_multi.coef_, est_multi_multi.coef_)
+        if est.__class__.__name__.endswith('CV'):
+            assert_allclose(est_auto_multi.Cs_, est_multi_multi.Cs_)
+            assert all(np.allclose(est_auto_multi.scores_[k],
+                                   est_multi_multi.scores_[k])
+                       for k in est_auto_multi.scores_)
+            for k in est_auto_multi.coefs_paths_:
+                print('k', 'abs', np.max(np.abs(est_auto_multi.coefs_paths_[k] - est_multi_multi.coefs_paths_[k])))
+                print('k', 'rel', np.max(np.abs(est_auto_multi.coefs_paths_[k] - est_multi_multi.coefs_paths_[k]) / est_multi_multi.coefs_paths_[k]))
+                assert_allclose(est_auto_multi.coefs_paths_[k],
+                                est_multi_multi.coefs_paths_[k],
+                                rtol=1e-5, atol=1e-3)
+        assert np.allclose(est_auto_multi.coef_, est_multi_multi.coef_,
+                           rtol=1e-5)
         assert np.allclose(est_auto_multi.predict_proba(X2),
                            est_multi_multi.predict_proba(X2))
 
@@ -1444,3 +1454,87 @@ def test_logistic_regression_multi_class_auto(est, solver):
         assert not np.allclose(est_auto_bin.coef_,
                                fit(X, y_multi, multi_class='multinomial',
                                    solver=solver).coef_)
+
+
+def test_lbfgs_stability():
+    def func(x, *args):
+        return _multinomial_loss_grad(x, *args)[0:2]
+
+    X = iris.data[::10]
+    y_multi = LabelBinarizer().fit_transform(iris.target[::10])
+    n_features = X.shape[1]
+
+    results = {0: [], 1: [], 2: []}
+    for i in range(50):
+        for split in range(3):
+            idx = np.arange(len(X))[split::3]
+            w0 = np.zeros((3, n_features + 1),
+                          order='F', dtype=X.dtype)
+            w0, loss, info = optimize.fmin_l_bfgs_b(
+                func, w0.ravel(), fprime=None,
+                args=(X[idx], y_multi[idx], 1e-3, np.ones(idx.shape[0])),
+                iprint=1, pgtol=1e-4, maxiter=10000)
+            results[split].append(w0)
+
+    import itertools
+    for split in range(3):
+        for i, j in itertools.combinations(range(len(results)), 2):
+            assert_allclose(results[split][i], results[split][j],
+                            atol=0, rtol=0)
+
+
+def test_logistic_regression_path_stability():
+    X = iris.data[::10]
+    y_multi = iris.target[::10]
+
+    results = {0: [], 1: [], 2: []}
+    for i in range(50):
+        for split in range(3):
+            coef = logistic_regression_path(X, y_multi, max_iter=10000,
+                                            solver='lbfgs',
+                                            multi_class='multinomial')[0]
+            results[split].append(coef)
+
+    import itertools
+    for split in range(3):
+        for i, j in itertools.combinations(range(len(results)), 2):
+            assert_allclose(results[split][i], results[split][j],
+                            atol=0, rtol=0)
+
+
+def test_logistic_regression_stability():
+    X = iris.data[::10]
+    y_multi = iris.target[::10]
+
+    results = {0: [], 1: [], 2: []}
+    for i in range(50):
+        for split in range(3):
+            lr = LogisticRegression(max_iter=10000,
+                                    solver='lbfgs',
+                                    multi_class='multinomial')
+            coef = lr.fit(X, y_multi).coef_
+            results[split].append(coef)
+
+    import itertools
+    for split in results:
+        for i, j in itertools.combinations(range(len(results)), 2):
+            assert_allclose(results[split][i], results[split][j],
+                            atol=0, rtol=0)
+
+
+def test_logistic_regression_cv_stability():
+    X = iris.data[::10]
+    y_multi = iris.target[::10]
+
+    results = []
+    for i in range(50):
+        lr = LogisticRegressionCV(max_iter=10000, cv=3,
+                                  solver='lbfgs',
+                                  multi_class='multinomial')
+        coef = lr.fit(X, y_multi).coef_
+        results.append(coef)
+
+    import itertools
+    for i, j in itertools.combinations(range(len(results)), 2):
+        assert_allclose(results[i], results[j],
+                        atol=0, rtol=0)
